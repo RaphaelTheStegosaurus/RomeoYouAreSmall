@@ -14,11 +14,126 @@ const GAME_STATE = {
 //[c] VARIABLES
 let gameState = GAME_STATE.START_MENU;
 let gameObjects = [];
+let paused_Button = null;
+let stilt_Bar = null;
 let current_stilt_height;
 let velocity_time = 6;
 let velocity_unity = 0.1;
 let bg;
-//[c] FUNCIONS
+let soundEffectScreen = null;
+let soundEffectVolumen = 0.5;
+let musicVolumen = 1.0;
+let music_bg = null;
+let music_instanced = null;
+let videoAnimation = null;
+//[c] FUNCTIONS
+function getPageSize() {
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+function setBgMusic() {
+  music_bg = new SoundWave("./audios/music_game.mp3", 0, 1, 0.7, playBgMusic);
+}
+function playBgMusic() {
+  if (music_bg) {
+    music_instanced = music_bg.play(null, 1, 1, 0, true, false);
+  }
+}
+function playEffectScreenSound() {
+  if (soundEffectScreen) {
+    soundEffectScreen.play().setVolume(musicVolumen);
+  }
+}
+function startGame() {
+  destroyAndResetGame();
+  gameState = GAME_STATE.ANIMATION_INTRO;
+  if (music_instanced) {
+    music_instanced.setVolume(musicVolumen);
+    music_instanced.resume();
+  }
+}
+function endGame() {
+  if (gameState === GAME_STATE.PLAYING) {
+    soundEffectScreen = new SoundWave(
+      "./audios/gameover.mp3",
+      0,
+      1,
+      0.7,
+      playEffectScreenSound
+    );
+    gameState = GAME_STATE.GAME_OVER;
+    music_instanced.pause();
+  }
+}
+function pauseGame() {
+  if (gameState === GAME_STATE.PLAYING) {
+    gameState = GAME_STATE.PAUSED;
+    music_instanced.pause();
+    // isPause = true;
+  }
+}
+function winGame() {
+  if (gameState === GAME_STATE.PLAYING) {
+    soundEffectScreen = new SoundWave(
+      "./audios/win.mp3",
+      0,
+      1,
+      0.7,
+      playEffectScreenSound
+    );
+    gameState = GAME_STATE.YOU_WIN;
+    music_instanced.pause();
+  }
+}
+function createGameObjects() {
+  const wallHeight = 40;
+  const wallCenterY = wallHeight / 2;
+  const wallWidth = 1;
+  const pageSize = getPageSize();
+  let stiltBarSize;
+  let stiltBarPos;
+  let pauseBtnSize;
+  let pauseBtnPos;
+  gameObjects = [];
+  gameObjects.push(new Level());
+  gameObjects.push(
+    new Boundary(vec2(0.5, wallCenterY), vec2(wallWidth, wallHeight))
+  );
+  gameObjects.push(
+    new Boundary(vec2(100 - 0.5, wallCenterY), vec2(wallWidth, wallHeight))
+  );
+  const player = new Player(vec2(5, STILT_STAR_HEIGTH + 6));
+  gameObjects.push(player);
+  bg = tile(vec2(0, 0), vec2(585, 427), 2);
+
+  if (isTouchDevice) {
+    stiltBarSize = vec2(pageSize.width / 4, pageSize.height / 20);
+    stiltBarPos = vec2((pageSize.width / 8) * 1.75, (pageSize.height / 20) * 5);
+    pauseBtnSize = vec2(pageSize.width / 8, pageSize.height / 10);
+    pauseBtnPos = vec2((pageSize.width / 8) * 1.75, pageSize.height / 10);
+  } else {
+    stiltBarSize = vec2(pageSize.width / 3, pageSize.height / 30);
+    stiltBarPos = vec2((pageSize.width / 8) * 1.75, (pageSize.height / 20) * 5);
+    pauseBtnSize = vec2(pageSize.width / 8, pageSize.height / 10);
+    pauseBtnPos = vec2((pageSize.width / 8) * 1.75, pageSize.height / 10);
+  }
+  stilt_Bar = new StiltBar(stiltBarPos, stiltBarSize);
+  paused_Button = new PauseButton(pauseBtnPos, pauseBtnSize);
+  paused_Button.visible = true;
+  stilt_Bar.visible = true;
+}
+function destroyAndResetGame() {
+  for (const obj of gameObjects) {
+    if (obj) {
+      obj.destroy();
+    }
+  }
+  gameObjects = [];
+  velocity_time = 6;
+  velocity_unity = 0.1;
+  paused_Button = null;
+  stilt_Bar = null;
+}
+//[c]CLASS
 class Player extends EngineObject {
   constructor(pos, stilt) {
     super(pos, vec2(4, 3));
@@ -74,7 +189,7 @@ class Player extends EngineObject {
 }
 class Stilt extends EngineObject {
   constructor(pos, player) {
-    super(pos, vec2(1, STILT_STAR_HEIGTH), null, 0, ORANGE);
+    super(vec2(pos.x, pos.y - 6), vec2(1, STILT_STAR_HEIGTH), null, 0, ORANGE);
     this.setCollision();
     this.player = player;
     this.respawnPos = pos;
@@ -195,14 +310,74 @@ class Boundary extends EngineObject {
     this.mass = 0;
   }
 }
+class StiltBar extends UIScrollbar {
+  constructor(pos, size) {
+    super(pos, size);
+    this.interactive = false;
+  }
+  update() {
+    const stiltValue = parseFloat(current_stilt_height / 10).toFixed(2);
+    this.getValue(stiltValue);
+    super.update();
+  }
+  getValue(value) {
+    if (value < 0.2) {
+      this.color = RED;
+      this.value = 0.01;
+      return;
+    }
+    if (value < 0.4) {
+      this.color = ORANGE;
+      this.value = 0.25;
+      return;
+    }
+    if (value < 0.5) {
+      this.color = YELLOW;
+      this.value = 0.35;
+      return;
+    }
+    if (value < 0.7) {
+      this.color = CYAN;
+      this.value = 0.47;
+      return;
+    }
+    if (value < 0.9) {
+      this.color = CYAN;
+      this.value = 0.5;
+      return;
+    }
+    if (value < 1.5) {
+      this.color = BLUE;
+      this.value = 0.75;
+      return;
+    }
+    if (value < 2.0) {
+      this.color = BLUE;
+      this.value = 0.85;
+      return;
+    }
+    if (value >= 2.0) {
+      this.color = GREEN;
+      this.value = 0.99;
+      return;
+    }
+  }
+}
+class PauseButton extends UIButton {
+  constructor(pos, size) {
+    super(pos, size);
+    this.text = "Pause";
+    this.font = `"Orbitron", sans-serif`;
+    this.color = rgb(0, 1, 1);
+    // this.onClick = pauseGame;
+    this.interactive = true;
+  }
+}
+
 function gameInit() {
   new UISystemPlugin();
   gravity.y = -0.05;
-  bg = tile(vec2(0, 0), vec2(585, 427), 2);
-  const player = new Player(vec2(5, 6));
-  new Level();
-  new Boundary(vec2(0.5, 20), vec2(1, 40));
-  new Boundary(vec2(100 - 0.5, 20), vec2(1, 40));
+  createGameObjects();
 }
 function gameUpdate() {}
 function gameUpdatePost() {}
