@@ -1,20 +1,170 @@
 "use strict";
-class Menus extends EngineObject {
-  constructor() {
-    super(vec2(0, 0));
-    // this.container = new UIObject(vec2(500, 500), vec2(100, 100));
-    // this.container.color = new Color(1, 1, 1, 0.9);
+//[c] CONSTANTS
+const STILT_HEIGHT_MIN = 0.01;
+const STILT_STAR_HEIGTH = 5;
+const STILT_GROW_UP = 2;
+const GAME_STATE = {
+  START_MENU: 0,
+  PLAYING: 1,
+  PAUSED: 2,
+  GAME_OVER: 3,
+  YOU_WIN: 4,
+  ANIMATION_INTRO: 5,
+};
+//[c] VARIABLES
+let gameState = GAME_STATE.START_MENU;
+let gameObjects = [];
+let current_stilt_height;
+let velocity_time = 6;
+let velocity_unity = 0.1;
+let bg;
+//[c] FUNCIONS
+class Player extends EngineObject {
+  constructor(pos, stilt) {
+    super(pos, vec2(4, 3));
+    this.setCollision();
+    this.stiltObject = new Stilt(this.pos, this);
+    this.JumpSound = new Sound([, , 1e3, , , 0.5, , , , , 99, 0.01, 0.03]);
+    this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 1);
   }
   update() {
-    // const MainCanvasSize = vec2(mainCanvas.width, mainCanvas.height);
-    // debugText(`size ${MainCanvasSize}`, vec2(0, 0), 1, WHITE);
-    // if (isTouchDevice) {
-    //   touchGamepadEnable = true;
-    //   cameraPos = gamepadStick(0);
-    // }
+    cameraPos = this.pos;
+    this.input();
+  }
+  destroy() {
+    if (this.stiltObject) {
+      this.stiltObject.destroy();
+    }
+    super.destroy();
+  }
+  input() {
+    let move;
+    let jump;
+    if (isTouchDevice) {
+      touchGamepadEnable = true;
+      move = gamepadStick(0);
+      jump = gamepadIsDown(0);
+    } else {
+      move = keyDirection();
+      jump = keyIsDown("Space");
+    }
+    this.move(move.x);
+    this.jump(jump);
+  }
+  move(vectorX) {
+    this.velocity.x += vectorX * (this.groundObject ? 0.1 : 0.01);
+    if (vectorX < 0) {
+      this.mirror = true;
+      this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 1);
+    } else if (vectorX > 0) {
+      this.mirror = false;
+      this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 1);
+    }
+  }
+  jump(isJump) {
+    if (this.groundObject && isJump) {
+      // this.JumpSound.play();
+      this.velocity.y = 0.75;
+      this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 7);
+    }
+  }
+  activateStilts() {
+    this.stiltObject.grow();
   }
 }
-
+class Stilt extends EngineObject {
+  constructor(pos, player) {
+    super(pos, vec2(1, STILT_STAR_HEIGTH), null, 0, ORANGE);
+    this.setCollision();
+    this.player = player;
+    this.respawnPos = pos;
+    this.Cloud = new CloudParticles(this.pos.x);
+    this.sound = new Sound([
+      ,
+      ,
+      418,
+      0,
+      0.02,
+      0.2,
+      4,
+      1.15,
+      -8.5,
+      ,
+      ,
+      ,
+      ,
+      0.7,
+      ,
+      0.1,
+    ]);
+    this.shrinkTimer = velocity_time;
+    this.tileInfo = new TileInfo(vec2(0, 0), vec2(32, 32), 5);
+  }
+  update() {
+    // if (gameState !== GAME_STATE.PLAYING) {
+    //   return;
+    // }
+    this.pos.x = this.player.pos.x;
+    this.Cloud.pos.x = this.pos.x;
+    current_stilt_height = this.size.y;
+    this.reduceY();
+  }
+  destroy() {
+    if (this.Cloud) {
+      this.Cloud.destroy();
+    }
+    super.destroy();
+  }
+  reduceY() {
+    if (this.size.y > 0.2) {
+      if (time % velocity_time === 0) {
+        this.size.y = this.size.y - velocity_unity;
+      }
+    } else {
+      if (gameState === GAME_STATE.PLAYING) {
+        endGame();
+      }
+      this.size.y = 0.1;
+    }
+  }
+  grow() {
+    this.size.y = this.size.y + STILT_GROW_UP;
+    this.pos.y = this.pos.y + STILT_GROW_UP;
+    this.player.pos.y += this.player.size.y + STILT_GROW_UP;
+    this.sound.play();
+  }
+}
+class CloudParticles extends ParticleEmitter {
+  constructor(posX) {
+    super(
+      vec2(posX, 1),
+      0,
+      3,
+      0,
+      200,
+      PI,
+      new TileInfo(vec2(0, 0), vec2(400, 400), 11),
+      hsl(0, 0, 0, 0.5),
+      hsl(0, 0, 1, 0.5),
+      hsl(0, 0, 0, 0),
+      hsl(0, 0, 1, 0),
+      1,
+      1,
+      2,
+      0.3,
+      0.01,
+      0.85,
+      1,
+      -0.075,
+      PI,
+      0.3,
+      0.5,
+      0,
+      0,
+      1
+    );
+  }
+}
 class Level extends EngineObject {
   constructor() {
     super();
@@ -38,110 +188,39 @@ class Level extends EngineObject {
     tileLayer.redraw();
   }
 }
-class Player extends EngineObject {
-  constructor(pos) {
-    super(pos, vec2(4, 3));
+class Boundary extends EngineObject {
+  constructor(pos, size) {
+    super(pos, size, new TileInfo(vec2(0, 0), vec2(16, 16), 0));
     this.setCollision();
-  }
-  update() {
-    cameraPos = vec2(
-      this.getCameraPosX(this.pos.x),
-      this.getCameraPosY(this.pos.y)
-    );
-    this.input();
-  }
-  input() {
-    let move;
-    let jump;
-    if (isTouchDevice) {
-      touchGamepadEnable = true;
-      move = gamepadStick(0);
-      jump = gamepadIsDown(0);
-    } else {
-      move = keyDirection();
-      jump = keyIsDown("Space");
-    }
-    this.move(move.x);
-    this.jump(jump);
-  }
-  move(vectorX) {
-    this.velocity.x += vectorX * (this.groundObject ? 0.1 : 0.01);
-    if (vectorX < 0) {
-      this.mirror = true;
-      //   this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 1);
-    } else if (vectorX > 0) {
-      this.mirror = false;
-      //   this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 1);
-    }
-  }
-  jump(isJump) {
-    if (this.groundObject && isJump) {
-      //   this.JumpSound.play();
-      this.velocity.y = 0.75;
-      //   this.tileInfo = new TileInfo(vec2(0, 0), vec2(500, 500), 7);
-    }
-  }
-  getCameraPosX(_posX) {
-    if (_posX < 20) {
-      return 19;
-    } else if (_posX > 80) {
-      return 81;
-    } else {
-      return _posX;
-    }
-  }
-  getCameraPosY(_posY) {
-    if (isTouchDevice) {
-      if (_posY < 5) {
-        return 5;
-      } else {
-        return _posY;
-      }
-    } else {
-      if (_posY < 9) {
-        return 9;
-      }
-      return _posY;
-    }
+    this.mass = 0;
   }
 }
-///////////////////////////////////////////////////////////////////////////////
 function gameInit() {
+  new UISystemPlugin();
   gravity.y = -0.05;
-  // new Level();
-  // new Player(vec2(2, 5));
-  // called once after the engine starts up
-  // setup the game
+  bg = tile(vec2(0, 0), vec2(585, 427), 2);
+  const player = new Player(vec2(5, 6));
+  new Level();
+  new Boundary(vec2(0.5, 20), vec2(1, 40));
+  new Boundary(vec2(100 - 0.5, 20), vec2(1, 40));
 }
-
-///////////////////////////////////////////////////////////////////////////////
-function gameUpdate() {
-  // called every frame at 60 frames per second
-  // handle input and update the game state
-}
-
-///////////////////////////////////////////////////////////////////////////////
-function gameUpdatePost() {
-  // called after physics and objects are updated
-  // setup camera and prepare for render
-}
-
-///////////////////////////////////////////////////////////////////////////////
+function gameUpdate() {}
+function gameUpdatePost() {}
 function gameRender() {
-  // called before objects are rendered
-  // draw any background effects that appear behind objects
+  drawTile(vec2(50, 20), vec2(100, 40), bg, new Color(1, 1, 1, 0.75));
 }
-
-///////////////////////////////////////////////////////////////////////////////
-function gameRenderPost() {
-  // called after objects are rendered
-  // draw effects or hud that appear above all objects
-  //   drawTextScreen("Hello World!", mainCanvasSize.scale(0.1), 80);
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// Startup LittleJS Engine
+function gameRenderPost() {}
 engineInit(gameInit, gameUpdate, gameUpdatePost, gameRender, gameRenderPost, [
   "./tiles/tile_ground.png",
-  "./tiles/player-idle.png",
+  "./tiles/player-use-stilt.png",
+  "./tiles/bg.png",
+  "./tiles/dog.png",
+  "./tiles/tools.png",
+  "./tiles/stick_stilt.png",
+  "./tiles/balcony.png",
+  "./tiles/player-jump.png",
+  "./tiles/start.png",
+  "./tiles/game_over.jpg",
+  "./tiles/win_screen.png",
+  "./tiles/circle_masking.svg",
 ]);
